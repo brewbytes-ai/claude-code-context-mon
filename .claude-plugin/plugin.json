@@ -1,0 +1,55 @@
+{
+  "name": "context-mon",
+  "version": "1.0.0",
+  "author": {
+    "name": "brewbytes.ai"
+  },
+  "description": "Real-time prompt-cache efficiency, token and API cost meter with a Claude Code native look.",
+  "license": "MIT",
+  "repository": "https://github.com/brewbytes-ai/claude-code-context-mon",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "costThreshold": {
+      "type": "number",
+      "title": "Cost alert step (USD)",
+      "description": "Toast each time the session's net cost crosses another multiple of this amount.",
+      "default": 1
+    },
+    "missStreak": {
+      "type": "number",
+      "title": "Cache-miss streak",
+      "description": "Alert after this many consecutive main-loop turns with a poor cache hit rate.",
+      "default": 3
+    },
+    "missBelowPct": {
+      "type": "number",
+      "title": "Poor hit rate below (%)",
+      "description": "A turn counts as a cache miss when its hit rate is under this and it read a meaningful prompt.",
+      "default": 50
+    },
+    "minInputTokens": {
+      "type": "number",
+      "title": "Min input tokens for miss check",
+      "description": "Turns with fewer total input tokens are never counted as misses.",
+      "default": 2000
+    },
+    "cacheTtlMinutes": {
+      "type": "number",
+      "title": "Cache lifetime override (minutes)",
+      "description": "0 follows the real lifetime the API granted, read from the session transcript (5m or 1h). Set a number only to force a value.",
+      "default": 0
+    },
+    "showBand": {
+      "type": "boolean",
+      "title": "Show badge above prompt",
+      "description": "Draw the inline turn badge above the prompt after every turn.",
+      "default": true
+    },
+    "priceUrl": {
+      "type": "string",
+      "title": "Price book URL",
+      "description": "LiteLLM-format model price JSON, refreshed at most once a day.",
+      "default": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+    }
+  }
+}

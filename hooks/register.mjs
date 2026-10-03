@@ -1,5 +1,6 @@
 import { atom, read, update } from 'claude-code'
 
+import { ContextBar } from './contextBar.tsx'
 import { alertText, ansiLines, badge, HEX, money, pct, plain, summary } from './fmt.mjs'
 import { addTurn, buildTable, cacheFromTranscript, emptyTotals, isStale, turnStats } from './pricing.mjs'
 
@@ -12,6 +13,9 @@ const last = atom({ plugin: 'context-mon', key: 'last' }, null)
 const isHidden = atom({ plugin: 'context-mon', key: 'isHidden' }, false)
 const cacheTtl = atom({ plugin: 'context-mon', key: 'cacheTtl' }, null) // ms, as the API granted it (from the transcript)
 const cacheAt = atom({ plugin: 'context-mon', key: 'cacheAt' }, null) // ms of the last request that touched the cache
+
+const context = atom({ plugin: 'context-mon', key: 'context' }, null)
+const isLegendOpen = atom({ plugin: 'context-mon', key: 'isLegendOpen' }, true)
 
 const STORE_KEY = 'prices'
 const book = { record: null, isRefreshing: false, timer: null, transcript: null } // { table, fetchedAt, failedAt }
@@ -61,6 +65,20 @@ async function syncCache($) {
   if (found.touchedAt !== null) await update($, cacheAt, at => at ?? found.touchedAt)
 }
 
+// The window by category, as /context counts it (local estimates, no API call).
+async function syncContext($) {
+  const usage = await $.session.usage({ breakdown: 'summary' })
+  const b = usage.context.breakdown
+  if (!b) return
+  const snap = {
+    total: b.totalTokens,
+    max: b.rawMaxTokens,
+    compactAt: b.isAutoCompactEnabled ? (b.autoCompactThreshold ?? null) : null,
+    categories: b.categories.map(c => ({ name: c.name, tokens: c.tokens, kind: c.kind })),
+  }
+  await update($, context, () => snap)
+}
+
 export const register = (on, options = {}) => {
   const costStep = Number(options.costThreshold) > 0 ? Number(options.costThreshold) : 1
   const missLimit = Number(options.missStreak) > 0 ? Number(options.missStreak) : 3
@@ -78,12 +96,13 @@ export const register = (on, options = {}) => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'context-mon',
-      description: 'Cache efficiency and cost summary (args: reset | hide | show | refresh)',
+      description: 'Cache efficiency and cost summary (args: reset | hide | show | legend | refresh)',
     })
     book.record = (await $.store.get(STORE_KEY)) ?? null
     void refreshPrices($, priceUrl)
     // Redraw the band twice a minute so the countdown stays live.
     book.timer?.cancel()
+    void syncContext($).catch(() => {})
     book.timer = $.clock.every(30000, () => $.ui.invalidate('ui.render'))
 
     return next(e)
@@ -133,6 +152,7 @@ export const register = (on, options = {}) => {
     })
     await update($, last, () => stat)
     await syncCache($).catch(() => {})
+    await syncContext($).catch(() => {})
 
     if (level > before.alertLevel) {
       $.ui.toast(alertText(`session cost passed ${money(level * costStep)} (now ${money(totals.cost)}). Consider starting a fresh session`))
@@ -157,6 +177,11 @@ export const register = (on, options = {}) => {
       await update($, isHidden, () => arg === 'hide')
       return { text: `context-mon: badge ${arg === 'hide' ? 'hidden' : 'shown'}.` }
     }
+    if (arg === 'legend') {
+      let open = false
+      await update($, isLegendOpen, prev => (open = !prev))
+      return { text: `context-mon: legend ${open ? 'expanded' : 'collapsed'}.` }
+    }
     if (arg === 'refresh') {
       const outcome = await refreshPrices($, priceUrl, true)
       return { text: `context-mon: price book ${outcome}.` }
@@ -171,18 +196,29 @@ export const register = (on, options = {}) => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const turn = await read($, last)
-    if (!showBand || e.props.hasSurvey || turn === null || (await read($, isHidden))) return next(e)
+    const ctx = await read($, context)
+    if (!showBand || e.props.hasSurvey || (turn === null && ctx === null) || (await read($, isHidden))) return next(e)
 
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Text, Button } = $.ui.resolve(e)
     const totals = await read($, session)
     const expiry = await cacheExpiry($, forcedTtlMs)
-
-    return h(
+    const line = turn === null ? null : h(
       Box,
-      {},
+      { paddingX: 1 },
       ...badge(turn, totals, expiry).map(x =>
         h(Text, x.s === 'dim' ? { dimColor: true } : x.s === 'plain' ? {} : { color: COLOR[x.s] }, x.t),
       ),
     )
+    if (ctx === null) return line
+
+    const card = ContextBar({
+      ui: { Box, Text, Button },
+      ctx,
+      expiry,
+      columns: e.props.bodyColumns,
+      isOpen: await read($, isLegendOpen),
+      onToggle: () => update($, isLegendOpen, open => !open),
+    })
+    return h(Box, { flexDirection: 'column' }, card, line)
   })
 }

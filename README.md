@@ -6,11 +6,28 @@
 
 A Claude Code plugin that monitors prompt-cache efficiency, token consumption and API cost in real time, in Claude Code's own visual style.
 
-After every turn it draws one line above the prompt:
+Above the prompt it draws a context card and, after every turn, a cost line:
 
 ```
-╭─ [Cache: 94.2% • Saved: $0.080 • 59m] Turn: $0.012 │ Session: $0.14
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ ◆ context          90k of 1M · compacts at 987k · cache 56m (ttl 1h)  [ 9% ] │
+│ ██▌███████▌▌▌██████████████████████████████████████████████████████████▌████ │
+│ ▾ hide legend                                                                │
+│ ■ system prompt 4.2k 1%   ■ tools 17k 2%   ■ mcp tools 52k 5%   ■ free 897k   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+ ╭─ [Cache: 94.2% • Saved: $0.080 • 59m] Turn: $0.012 │ Session: $0.14
 ```
+
+**Context card**
+
+| Part | Meaning |
+|---|---|
+| Header | Tokens in the context window, the window size, where auto-compaction runs, and the cache lifetime left with its TTL (`5m` or `1h`) |
+| `[ 9% ]` | Share of the window in use; green, amber from 60%, red from 80% |
+| Bar | The window by category at full band width; free space dark gray, the compaction reserve lighter, an amber tick at the compaction point |
+| Legend | Each category's tokens and share. Collapse or expand it with the `▾ hide legend` / `▸ show legend` button, the `l` hotkey (once the band has focus), or `/context-mon legend` |
+
+**Cost line**
 
 | Part | Meaning |
 |---|---|
@@ -52,7 +69,8 @@ Start a new session afterwards. The badge appears after the first reply.
 |---|---|
 | `/context-mon` | Session summary card: token breakdown (read / write / uncached / out), cache efficiency, expiry, gross cost, savings, net billed |
 | `/context-mon reset` | Zero the session totals |
-| `/context-mon hide` / `show` | Toggle the badge |
+| `/context-mon hide` / `show` | Toggle the band above the prompt |
+| `/context-mon legend` | Collapse or expand the context card's legend |
 | `/context-mon refresh` | Re-fetch the price book now |
 
 ### Options
@@ -79,7 +97,7 @@ Set under `pluginConfigs` → `context-mon` → `options` in `~/.claude/settings
 
 ### How it works
 
-`hooks/register.mjs` hooks `turn.step` and `turn.complete` to read each response's token usage, keeps session totals in plugin state, and draws the badge with a `ui.render` hook. `hooks/pricing.mjs` holds the cost and cache maths and `hooks/fmt.mjs` the formatting, both free of engine calls so they can be tested with plain `node`.
+`hooks/register.mjs` hooks `turn.step` and `turn.complete` to read each response's token usage, keeps session totals in plugin state, and draws the band with a `ui.render` hook. After each turn it reads the window's breakdown by category with `$.session.usage({ breakdown: 'summary' })` (local estimates, no API call); `hooks/contextBar.tsx` draws the context card from it. `hooks/pricing.mjs` holds the cost and cache maths and `hooks/fmt.mjs` the formatting, both free of engine calls so they can be tested with plain `node`.
 
 In the API's usage, `input_tokens` counts only the uncached remainder, so total input is uncached + cache read + cache write.
 
@@ -105,11 +123,28 @@ See [CLAUDE.md](CLAUDE.md) for the rules the validator enforces and the pitfalls
 
 一個 Claude Code 外掛，即時監控提示快取（prompt cache）效率、token 用量與 API 費用，介面沿用 Claude Code 原生的視覺風格。
 
-每一輪回應結束後，會在輸入框上方顯示一行：
+輸入框上方會顯示一張上下文卡片，並在每一輪回應結束後顯示一行費用資訊：
 
 ```
-╭─ [Cache: 94.2% • Saved: $0.080 • 59m] Turn: $0.012 │ Session: $0.14
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ ◆ context          90k of 1M · compacts at 987k · cache 56m (ttl 1h)  [ 9% ] │
+│ ██▌███████▌▌▌██████████████████████████████████████████████████████████▌████ │
+│ ▾ hide legend                                                                │
+│ ■ system prompt 4.2k 1%   ■ tools 17k 2%   ■ mcp tools 52k 5%   ■ free 897k   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+ ╭─ [Cache: 94.2% • Saved: $0.080 • 59m] Turn: $0.012 │ Session: $0.14
 ```
+
+**上下文卡片**
+
+| 部分 | 意義 |
+|---|---|
+| 標題列 | 上下文視窗中的 token 數、視窗大小、自動壓縮的觸發點，以及快取剩餘時間與其 TTL（`5m` 或 `1h`） |
+| `[ 9% ]` | 視窗使用比例；綠色，60% 起轉為琥珀色，80% 起轉為紅色 |
+| 長條 | 依類別顯示視窗用量，寬度填滿整列；可用空間為深灰、壓縮保留區為淺灰，琥珀色刻度標示壓縮觸發點 |
+| 圖例 | 各類別的 token 數與比例。可透過 `▾ hide legend` / `▸ show legend` 按鈕、`l` 快捷鍵（狀態列取得焦點時）或 `/context-mon legend` 收合或展開 |
+
+**費用資訊列**
 
 | 欄位 | 意義 |
 |---|---|
@@ -152,6 +187,7 @@ claude --plugin-dir /path/to/context-mon
 | `/context-mon` | 工作階段摘要卡：token 明細（讀取／寫入／未快取／輸出）、快取效率、到期時間、總費用、節省金額、實際帳單 |
 | `/context-mon reset` | 將本次工作階段的累計數字歸零 |
 | `/context-mon hide` / `show` | 隱藏或顯示輸入框上方的狀態列 |
+| `/context-mon legend` | 收合或展開上下文卡片的圖例 |
 | `/context-mon refresh` | 立即重新下載價格表 |
 
 ### 設定選項
@@ -178,7 +214,7 @@ claude --plugin-dir /path/to/context-mon
 
 ### 運作原理
 
-`hooks/register.mjs` 掛接 `turn.step` 與 `turn.complete` 以讀取每次回應的 token 用量，將累計數字存放在外掛狀態中，並透過 `ui.render` hook 繪製狀態列。`hooks/pricing.mjs` 負責費用與快取計算，`hooks/fmt.mjs` 負責格式化；兩者都不呼叫引擎介面，因此可以直接用 `node` 測試。
+`hooks/register.mjs` 掛接 `turn.step` 與 `turn.complete` 以讀取每次回應的 token 用量，將累計數字存放在外掛狀態中，並透過 `ui.render` hook 繪製狀態列。每一輪結束後，它以 `$.session.usage({ breakdown: 'summary' })` 讀取視窗的類別明細（本機估算，不呼叫 API），再由 `hooks/contextBar.tsx` 繪製上下文卡片。`hooks/pricing.mjs` 負責費用與快取計算，`hooks/fmt.mjs` 負責格式化；兩者都不呼叫引擎介面，因此可以直接用 `node` 測試。
 
 在 API 的用量資料中，`input_tokens` 只代表未快取的部分，所以總輸入 = 未快取 + 快取讀取 + 快取寫入。
 

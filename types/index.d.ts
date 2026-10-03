@@ -27,6 +27,13 @@ export type TurnStat = {
   isEstimated: boolean
 }
 
+export type ContextSnapshot = {
+  total: number
+  max: number
+  compactAt: number | null
+  categories: { name: string; tokens: number; kind: 'used' | 'free' | 'buffer' | 'deferred' }[]
+}
+
 declare module 'claude-code' {
   interface PluginState {
     'context-mon': {
@@ -35,6 +42,8 @@ declare module 'claude-code' {
       isHidden: boolean
       cacheAt: number | null
       cacheTtl: number | null
+      context: ContextSnapshot | null
+      isLegendOpen: boolean
     }
   }
 }
